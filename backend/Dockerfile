@@ -1,17 +1,27 @@
-FROM node:20.9.0-alpine
+# syntax=docker/dockerfile:1
 
-RUN mkdir -p /app/node_modules && chown -R node:node /app
-
+# ---- deps: install everything needed to build ----
+FROM node:22-alpine AS deps
 WORKDIR /app
+COPY package.json package-lock.json ./
+RUN npm ci
 
-COPY --chown=node:node package*.json /app
+# ---- build: compile TypeScript, then drop dev dependencies ----
+FROM deps AS build
+COPY tsconfig.json tsconfig.build.json ./
+COPY src ./src
+RUN npm run build && npm prune --omit=dev
 
+# ---- runtime: small image, non-root user, only what is needed to run ----
+FROM node:22-alpine AS runtime
+ENV NODE_ENV=production
+WORKDIR /app
+COPY --from=build --chown=node:node /app/node_modules ./node_modules
+COPY --from=build --chown=node:node /app/dist ./dist
+COPY --chown=node:node drizzle ./drizzle
+COPY --chown=node:node package.json ./
 USER node
-
-RUN npm install
-
-COPY --chown=node:node . .
-
-RUN npm run build
-
-CMD [ "npm", "start" ]
+EXPOSE 5006
+HEALTHCHECK --interval=10s --timeout=3s --start-period=15s --retries=5 \
+  CMD wget -qO- "http://127.0.0.1:${PORT:-5006}/health" || exit 1
+CMD ["node", "dist/server.js"]

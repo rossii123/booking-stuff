@@ -1,0 +1,63 @@
+# Full stack: Postgres + API + web app.
+#   cp .env.example .env   (optional, defaults work for local use)
+#   docker compose up --build -d
+#   open http://localhost:3000        web app
+#   open http://localhost:5006/v1/docs API docs
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: minut
+      POSTGRES_PASSWORD: minut
+      POSTGRES_DB: minut
+    ports:
+      - '5432:5432'
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U minut -d minut']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  backend:
+    build:
+      context: ./backend
+    image: minut-assignment-backend
+    environment:
+      PORT: 5006
+      NODE_ENV: production
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      DATABASE_URL: postgres://minut:minut@postgres:5432/minut
+      JWT_SECRET: ${JWT_SECRET:-dev-only-change-me-dev-only-change-me-dev-only}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-1h}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000}
+      TRUST_PROXY: "true"
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@example.com}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-admin1234}
+      VIEWER_EMAIL: ${VIEWER_EMAIL:-viewer@example.com}
+      VIEWER_PASSWORD: ${VIEWER_PASSWORD:-viewer1234}
+    ports:
+      - '5006:5006'
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+    image: minut-assignment-frontend
+    environment:
+      # Server-side URL the Next.js proxy uses to reach the API inside the compose network.
+      API_URL: http://backend:5006
+      SESSION_COOKIE_SECURE: ${SESSION_COOKIE_SECURE:-false}
+    ports:
+      - '3000:3000'
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  pgdata:
