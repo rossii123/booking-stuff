@@ -1,36 +1,43 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Frontend — Minut Booking web app
 
-## Getting Started
+Next.js 16 (App Router) · React 19 · TanStack Query · react-hook-form + zod · Tailwind CSS 4 · Vitest
 
-First, run the development server:
+## Run
 
 ```bash
+# full stack, from the repository root
+docker compose up --build -d
+open http://localhost:3000          # admin@example.com / admin1234
+
+# or locally against a running API
+cp .env.example .env                 # API_URL=http://localhost:5006
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## How it talks to the API
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+The browser never calls the API directly and never sees a token:
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+1. `POST /api/auth/login` (a Route Handler) forwards credentials to the API and
+   stores the returned JWT in an **httpOnly, SameSite=Lax cookie**.
+2. Every data call goes to `/api/v1/...`; the catch-all Route Handler in
+   `src/app/api/[...path]/route.ts` attaches `Authorization: Bearer <cookie>` and
+   forwards to `API_URL`, passing status and body through unchanged.
+3. `src/proxy.ts` redirects page navigations without a valid-looking session to
+   `/login`; the `(app)` layout re-checks and exposes the user to React.
 
-## Learn More
+`src/lib/api/schema.d.ts` is **generated** from `../backend/openapi.json`
+(`npm run api:types`) and drives the typed `openapi-fetch` client, so a backend
+schema change fails the frontend build instead of a user's request.
 
-To learn more about Next.js, take a look at the following resources:
+## Scripts
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+| Script              | What it does                                   |
+| ------------------- | ---------------------------------------------- |
+| `npm run dev`       | Dev server on :3000                            |
+| `npm run build`     | Production build (`output: 'standalone'`)      |
+| `npm test`          | Vitest + Testing Library (jsdom)               |
+| `npm run lint`      | ESLint (next/core-web-vitals + typescript)     |
+| `npm run typecheck` | `tsc --noEmit`                                 |
+| `npm run api:types` | Regenerate the API types from the OpenAPI spec |
